@@ -1,0 +1,31 @@
+{
+    "name": "Graphite-Monitor",
+    "description": "Simple monitoring of Graphite data",
+    "license": "WTFPLv2",
+    "authors": [
+        {
+            "name": "Maxime VALETTE",
+            "email": "maxime@maximevalette.com"
+        }
+    ],
+    "autoload": {
+        "psr-4": {
+            "Graphiter\\": "src/Graphiter"
+        }
+    },
+    "require": {
+        "php": ">=5.4",
+        "guzzle/guzzle": "~3.7",
+        "symfony/console": "~2.5",
+        "swiftmailer/swiftmailer": "5.2.*@dev",
+        "twilio/sdk": "dev-master",
+        "xenji/ProwlPHP": ">=1.0.2"
+    },
+    "require-dev": {
+        "m6web/coke": "dev-master",
+        "m6web/symfony2-coding-standard": "dev-master"
+    },
+    "config": {
+        "bin-dir": "bin/"
+    }
+}
