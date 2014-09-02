@@ -92,6 +92,7 @@ class ProwlAlerter implements AlerterInterface
 
         $oMsg->addApiKey($this->options['key']);
         $oMsg->setEvent($msg);
+        $oMsg->setApplication('Graphiter');
 
         $oProwl->push($oMsg);
     }
