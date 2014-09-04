@@ -38,17 +38,6 @@ class TwilioAlerter implements AlerterInterface
             return;
         }
 
-        $args['type']   = $this->type;
-        $args['action'] = 'TRIGGERED';
-
-        foreach ($args as $k => $data) {
-            $args['{' . $k . '}'] = $data;
-            unset($args[$k]);
-        }
-
-        $subject = str_replace(array_keys($args), array_values($args), $this->options['subject']);
-        $msg     = str_replace(array_keys($args), array_values($args), $this->config['trigger']);
-
         $this->call();
     }
 

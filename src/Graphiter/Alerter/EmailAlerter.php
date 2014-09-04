@@ -2,7 +2,7 @@
 
 namespace Graphiter\Alerter;
 
-use Swift_Message, Swift_Mailer, Swift_SmtpTransport, Swift_MailTransport;
+use Swift_Message, Swift_Mailer, Swift_SmtpTransport, Swift_MailTransport, Swift_Attachment;
 
 /**
  * Class EmailAlerter
@@ -46,10 +46,10 @@ class EmailAlerter implements AlerterInterface
             unset($args[$k]);
         }
 
-        $subject = str_replace(array_keys($args), array_values($args), $this->options['subject']);
-        $msg     = str_replace(array_keys($args), array_values($args), $this->config['trigger']);
+        $subject = strtr($this->options['subject'], $args);
+        $msg     = strtr($this->config['trigger'], $args);
 
-        $this->mail($subject, $msg);
+        $this->mail($subject, $msg, $args['url']);
     }
 
     /**
@@ -72,19 +72,21 @@ class EmailAlerter implements AlerterInterface
             unset($args[$k]);
         }
 
-        $subject = str_replace(array_keys($args), array_values($args), $this->options['subject']);
-        $msg     = str_replace(array_keys($args), array_values($args), $this->config['resolve']);
+        $subject = strtr($this->options['subject'], $args);
+        $msg     = strtr($this->config['resolve'], $args);
 
-        $this->mail($subject, $msg);
+        $this->mail($subject, $msg, $args['url']);
     }
 
     /**
      * @param string $subject
      * @param string $msg
      */
-    protected function mail($subject, $msg)
+    protected function mail($subject, $msg, $url)
     {
+        /** @var Swift_Message $message */
         $message = Swift_Message::newInstance()->setSubject($subject)->setFrom($this->options['from'])->setTo($this->options['to'])->setBody($msg);
+        $message->attach(Swift_Attachment::newInstance(file_get_contents($url), 'graph.png'));
 
         if (is_array($this->options['smtp'])) {
             $transport = Swift_SmtpTransport::newInstance($this->options['smtp']['host'], $this->options['smtp']['port']);

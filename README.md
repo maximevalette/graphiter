@@ -23,6 +23,8 @@ To-Do:
 - Custom database interface instead of static file
 - Parallel URL queries
 - New alerters (PagerDuty? Twitter? IFTTT?)
+- Different targets per alerters (and metrics)
+- Adding a Pending status to wait for the next fetching
 - Test everything
 
 Setup

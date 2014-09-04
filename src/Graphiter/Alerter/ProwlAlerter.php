@@ -46,7 +46,7 @@ class ProwlAlerter implements AlerterInterface
             unset($args[$k]);
         }
 
-        $msg = str_replace(array_keys($args), array_values($args), $this->config['trigger']);
+        $msg = strtr($this->config['trigger'], $args);
 
         $this->alert($msg);
     }
@@ -71,7 +71,7 @@ class ProwlAlerter implements AlerterInterface
             unset($args[$k]);
         }
 
-        $msg = str_replace(array_keys($args), array_values($args), $this->config['resolve']);
+        $msg = strtr($this->config['resolve'], $args);
 
         $this->alert($msg);
     }
