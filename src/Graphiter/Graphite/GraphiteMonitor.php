@@ -5,6 +5,7 @@ namespace Graphiter\Graphite;
 use Exception;
 use Symfony\Component\Console\Output\Output;
 use Graphiter\Data\Units;
+use Graphiter\Tools\ParallelCurl;
 
 /**
  * Class GraphiteMonitor
@@ -50,112 +51,146 @@ class GraphiteMonitor
      */
     public function monitor()
     {
-        $units = new Units();
+        $args = [
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_SSL_VERIFYHOST => false,
+            CURLOPT_USERAGENT => 'Graphiter',
+        ];
+
+        if (isset($this->options['graphite']['user']) && !empty($this->options['graphite']['user'])) {
+            $args[CURLOPT_USERPWD] = $this->options['graphite']['user'] . ':' . $this->options['graphite']['pass'];
+        }
+
+        $parallelCurl = new ParallelCurl(10, $args);
 
         foreach ($this->metrics as $metric => $config) {
 
-            $threshold = (isset($config['threshold'])) ? $config['threshold'] : $this->threshold;
             $lookback = (isset($config['lookback'])) ? $config['lookback'] : $this->lookback;
 
             if ($this->output->isVerbose()) {
                 $this->output->writeln('Fetching ' . $config['target']);
             }
 
-            $data = $this->graphite->fetch($config['target'], $lookback, $config['fetch']);
+            $url = $this->graphite->fetch($config['target'], $lookback);
+            $parallelCurl->startRequest($url, array($this, 'check'), $metric);
 
-            $warnLevel  = $units->toRaw($config['warn']);
-            $alertLevel = $units->toRaw($config['alert']);
+        }
 
-            $warn     = 0;
-            $alert    = 0;
-            $badValue = null;
+        $parallelCurl->finishAllRequests();
+    }
 
-            if ($this->output->isVerbose()) {
-                $this->output->writeln('Values: ' . implode(', ', $data));
-            }
+    /**
+     * @param string   $content
+     * @param string   $url
+     * @param resource $ch
+     * @param string   $metric
+     *
+     * @throws Exception
+     */
+    public function check($content, $url, $ch, $metric)
+    {
+        $config = $this->metrics[$metric];
 
-            $checkOrder = 'gt';
+        $data = json_decode($content, true);
+        $data = $this->graphite->reformat($data, $config['fetch']);
 
-            if ($warnLevel > $alertLevel) {
-                $checkOrder = 'lt';
-            }
+        $units = new Units();
 
-            foreach ($data as $ts => $value) {
-                if ($checkOrder == 'gt') {
-                    if ($value >= $warnLevel) {
-                        if ($this->output->isVerbose()) {
-                            $this->output->writeln('<error>Value ' . $value . ' is above Warn level ' . $warnLevel . '</error>');
-                        }
-                        $badValue = $value;
-                        $warn++;
+        $threshold = (isset($config['threshold'])) ? $config['threshold'] : $this->threshold;
+        $lookback = (isset($config['lookback'])) ? $config['lookback'] : $this->lookback;
+
+        $warnLevel  = $units->toRaw($config['warn']);
+        $alertLevel = $units->toRaw($config['alert']);
+
+        $warn     = 0;
+        $alert    = 0;
+        $badValue = null;
+
+        if ($this->output->isVerbose()) {
+            $this->output->writeln('Values: ' . implode(', ', $data));
+        }
+
+        $checkOrder = 'gt';
+
+        if ($warnLevel > $alertLevel) {
+            $checkOrder = 'lt';
+        }
+
+        foreach ($data as $ts => $value) {
+            if ($checkOrder == 'gt') {
+                if ($value >= $warnLevel) {
+                    if ($this->output->isVerbose()) {
+                        $this->output->writeln('<error>Value ' . $value . ' is above Warn level ' . $warnLevel . '</error>');
                     }
-                    if ($value >= $alertLevel) {
-                        if ($this->output->isVerbose()) {
-                            $this->output->writeln('<error>Value ' . $value . ' is above Alert level ' . $alertLevel . '</error>');
-                        }
-                        $badValue = $value;
-                        $alert++;
-                    }
-                } else {
-                    if ($value <= $warnLevel) {
-                        if ($this->output->isVerbose()) {
-                            $this->output->writeln('<error>Value ' . $value . ' is below Warn level ' . $warnLevel . '</error>');
-                        }
-                        $badValue = $value;
-                        $warn++;
-                    }
-                    if ($value <= $alertLevel) {
-                        if ($this->output->isVerbose()) {
-                            $this->output->writeln('<error>Value ' . $value . ' is below Alert level ' . $alertLevel . '</error>');
-                        }
-                        $badValue = $value;
-                        $alert++;
-                    }
+                    $badValue = $value;
+                    $warn++;
                 }
-            }
-
-            $args = ['width' => 586, 'height' => 307, 'target' => "alias({$config['target']},'$metric')", 'from' => '-1h',];
-            $t1   = ['target' => "alias(threshold($warnLevel),'Warn')"];
-            $t2   = ['target' => "alias(threshold($alertLevel),'Alert')"];
-            $url  = $this->options['graphite_url'] . "/render/?" . http_build_query($args) . '&' . http_build_query($t1) . '&' . http_build_query($t2);
-
-            $args = ['name' => $metric, 'value' => $units->toUnit($config['unit'], $badValue), 'times' => 0, 'lookback' => $lookback, 'url' => $url];
-
-            if ($alert > $threshold) {
-                $args['times'] = $alert;
-                // if we already have an outstanding alert don't send a duplicate
-                if (isset($this->db[$metric]) && $this->db[$metric] == 'alert') {
-                    if ($checkOrder == 'gt') {
-                        $this->info($metric . ' still above Alert level ' . $args['value']);
-                    } else {
-                        $this->info($metric . ' still below Alert level ' . $args['value']);
+                if ($value >= $alertLevel) {
+                    if ($this->output->isVerbose()) {
+                        $this->output->writeln('<error>Value ' . $value . ' is above Alert level ' . $alertLevel . '</error>');
                     }
-                } else {
-                    $this->alerter['alert']->trigger($metric, $args);
-                    $this->info($metric . ' at Alert level ' . $args['value']);
-                    $this->mark('alert', $metric);
-                }
-            } elseif ($warn > $threshold) {
-                $args['times'] = $warn;
-                // if we have an outstanding alert, or warn don't duplicate
-                if (!empty($this->db[$metric])) {
-                    if ($checkOrder == 'gt') {
-                        $this->info($metric . ' still below Warn level ' . $args['value']);
-                    } else {
-                        $this->info($metric . ' still below Warn level ' . $args['value']);
-                    }
-                } else {
-                    $this->alerter['warn']->trigger($metric, $args);
-                    $this->info($metric . ' at Warn level ' . $args['value']);
-                    $this->mark('warn', $metric);
+                    $badValue = $value;
+                    $alert++;
                 }
             } else {
-                // all clear resolve any outstanding alerts
-                if (isset($this->db[$metric])) {
-                    $this->alerter[$this->db[$metric]]->resolve($metric, $args);
-                    $this->info("$metric {$this->db[$metric]} resolved");
-                    unset($this->db[$metric]);
+                if ($value <= $warnLevel) {
+                    if ($this->output->isVerbose()) {
+                        $this->output->writeln('<error>Value ' . $value . ' is below Warn level ' . $warnLevel . '</error>');
+                    }
+                    $badValue = $value;
+                    $warn++;
                 }
+                if ($value <= $alertLevel) {
+                    if ($this->output->isVerbose()) {
+                        $this->output->writeln('<error>Value ' . $value . ' is below Alert level ' . $alertLevel . '</error>');
+                    }
+                    $badValue = $value;
+                    $alert++;
+                }
+            }
+        }
+
+        $args = ['width' => 586, 'height' => 307, 'target' => "alias({$config['target']},'$metric')", 'from' => '-1h',];
+        $t1   = ['target' => "alias(threshold($warnLevel),'Warn')"];
+        $t2   = ['target' => "alias(threshold($alertLevel),'Alert')"];
+        $url  = $this->options['graphite_url'] . "/render/?" . http_build_query($args) . '&' . http_build_query($t1) . '&' . http_build_query($t2);
+
+        $args = ['name' => $metric, 'value' => $units->toUnit($config['unit'], $badValue), 'times' => 0, 'lookback' => $lookback, 'url' => $url];
+
+        if ($alert > $threshold) {
+            $args['times'] = $alert;
+            // if we already have an outstanding alert don't send a duplicate
+            if (isset($this->db[$metric]) && $this->db[$metric] == 'alert') {
+                if ($checkOrder == 'gt') {
+                    $this->info($metric . ' still above Alert level ' . $args['value']);
+                } else {
+                    $this->info($metric . ' still below Alert level ' . $args['value']);
+                }
+            } else {
+                $this->alerter['alert']->trigger($metric, $args);
+                $this->info($metric . ' at Alert level ' . $args['value']);
+                $this->mark('alert', $metric);
+            }
+        } elseif ($warn > $threshold) {
+            $args['times'] = $warn;
+            // if we have an outstanding alert, or warn don't duplicate
+            if (!empty($this->db[$metric])) {
+                if ($checkOrder == 'gt') {
+                    $this->info($metric . ' still below Warn level ' . $args['value']);
+                } else {
+                    $this->info($metric . ' still below Warn level ' . $args['value']);
+                }
+            } else {
+                $this->alerter['warn']->trigger($metric, $args);
+                $this->info($metric . ' at Warn level ' . $args['value']);
+                $this->mark('warn', $metric);
+            }
+        } else {
+            // all clear resolve any outstanding alerts
+            if (isset($this->db[$metric])) {
+                $this->alerter[$this->db[$metric]]->resolve($metric, $args);
+                $this->info("$metric {$this->db[$metric]} resolved");
+                unset($this->db[$metric]);
             }
         }
     }

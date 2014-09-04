@@ -2,8 +2,6 @@
 
 namespace Graphiter\Graphite;
 
-use Guzzle\Http\Client;
-
 /**
  * Class GraphiteData
  *
@@ -12,7 +10,6 @@ use Guzzle\Http\Client;
 class GraphiteData
 {
     protected $config;
-    protected $client;
 
     /**
      * @param array $config
@@ -20,28 +17,21 @@ class GraphiteData
     public function __construct(array $config)
     {
         $this->config = $config;
-
-        $this->client = new Client($config['url']);
     }
 
     /**
-     * @param string      $target
-     * @param string      $lookback
-     * @param string|null $fetch
+     * @param string $target
+     * @param string $lookback
      *
      * @return array
      * @throws \Exception
      */
-    public function fetch($target, $lookback, $fetch = null)
+    public function fetch($target, $lookback)
     {
         $args = ['target' => $target, 'format' => 'json', 'from' => "-{$lookback}min"];
+        $url = $this->config['url'] . '/render?' . http_build_query($args);
 
-        $request = $this->client->get('/render?' . http_build_query($args))->setAuth($this->config['user'], $this->config['pass'], 'Digest');
-
-        $r    = $request->send();
-        $data = $r->json();
-
-        return $this->reformat($data, $fetch);
+        return $url;
     }
 
     /**
@@ -51,7 +41,7 @@ class GraphiteData
      * @return array
      * @throws \Exception
      */
-    protected function reformat(array $data, $fetch = null)
+    public function reformat(array $data, $fetch = null)
     {
         $out          = array();
         $selectedData = $data[0];

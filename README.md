@@ -13,6 +13,7 @@ Supported features:
 
 - Warn and Alert levels
 - Both ways detection (above or below)
+- Parallel URL queries
 - Templates
 - Per-metric threshold
 - Per-metric lookback
@@ -21,7 +22,6 @@ Supported features:
 To-Do:
 
 - Custom database interface instead of static file
-- Parallel URL queries
 - New alerters (PagerDuty? Twitter? IFTTT?)
 - Different targets per alerters (and metrics)
 - Adding a Pending status to wait for the next fetching

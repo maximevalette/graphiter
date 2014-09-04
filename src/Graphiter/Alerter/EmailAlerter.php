@@ -81,6 +81,7 @@ class EmailAlerter implements AlerterInterface
     /**
      * @param string $subject
      * @param string $msg
+     * @param string $url
      */
     protected function mail($subject, $msg, $url)
     {
