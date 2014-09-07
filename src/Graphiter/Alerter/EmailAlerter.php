@@ -87,7 +87,7 @@ class EmailAlerter implements AlerterInterface
     {
         /** @var Swift_Message $message */
         $message = Swift_Message::newInstance()->setSubject($subject)->setFrom($this->options['from'])->setTo($this->options['to'])->setBody($msg);
-        $message->attach(Swift_Attachment::newInstance(file_get_contents($url), 'graph.png'));
+        $message->attach(Swift_Attachment::newInstance(file_get_contents($url), 'graph.png', 'image/png'));
 
         if (is_array($this->options['smtp'])) {
             $transport = Swift_SmtpTransport::newInstance($this->options['smtp']['host'], $this->options['smtp']['port']);
